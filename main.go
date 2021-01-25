@@ -1,77 +1,133 @@
 package main
 
 import (
-    "bufio"
-    "context"
-    flags "github.com/jessevdk/go-flags"
-    "fmt"
-    "net"
-    "sync"
-    "strings"
-    "os"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"strings"
+	"context"
+	"time"
+	"bufio"
+	"sync"
+	"fmt"
+	"net"
+	"os"
 )
 
-var opts struct {
-        Threads int `short:"t" long:"threads" default:"8" description:"How many threads should be used"`
-        ResolverIP string `short:"r" long:"resolver" description:"IP of the DNS resolver to use for lookups"`
-        Protocol   string `short:"P" long:"protocol" choice:"tcp" choice:"udp" default:"udp" description:"Protocol to use for lookups"`
-        Port       uint16 `short:"p" long:"port" default:"53" description:"Port to bother the specified DNS resolver on"`
-	Domain     bool   `short:"d" long:"domain" description:"Output only domains"`
+var Threads int = 8
+var resolverList string = "./dnsResolvers.txt"
+var targetList string = "targets.txt"
+var Resolvers []string
+var Protocol string = "udp"
+var Port int = 53
+var resolverIP string
+var resList []string
+
+func ipLoad(path string) []string {
+	log.Info().Msg("Loading IP addresses from " + path)
+
+	f, err := os.Open(path)
+
+	if err != nil {
+		log.Debug().Msg(err.Error())
+		os.Exit(1)
+	}
+
+	defer f.Close()
+	scan := bufio.NewScanner(f)
+
+	var l []string
+
+	for scan.Scan() {
+		line := strings.TrimSpace(scan.Text())
+		if strings.Count(line,".") == 3 {
+			log.Debug().Msg("load from " + path + ": " + line)
+			l = append(l, line)
+		} else {
+			log.Debug().Msg("invalid: " + line)
+			os.Exit(1)
+		}
+	}
+
+	log.Info().Int("count", len(l)).Msg("Done loading resolvers")
+
+	return l
 }
 
+
+func randoIP(choice []string) string {
+	len := len(choice)
+	n := uint32(0)
+	if len > 0 {
+		n = getRandomUint32() % uint32(len)
+	}
+	return choice[n]
+}
+
+func getRandomUint32() uint32 {
+	x := time.Now().UnixNano()
+	return uint32((x >> 32) ^ x)
+}
+
+func init() {
+	// init logger
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	// load resolvers from list
+	Resolvers = ipLoad(resolverList)
+}
+
+
 func main() {
-        _, err := flags.ParseArgs(&opts, os.Args)
-        if err != nil{
-            os.Exit(1)
-        }
+	work := make(chan string)
+	go func() {
+		f, err := os.Open(targetList)
+		if err != nil {
+			log.Debug().Err(err).Msg("fatal")
+			os.Exit(1)
+		}
+		defer f.Close()
+		ipList := bufio.NewScanner(f)
+		for ipList.Scan() {
+			target := ipList.Text()
+			work <- target
+		}
+		close(work)
+	}()
 
-        // default of 8 threads
-        numWorkers := opts.Threads
+	wg := &sync.WaitGroup{}
 
-        work := make(chan string)
-        go func() {
-            s := bufio.NewScanner(os.Stdin)
-            for s.Scan() {
-                work <- s.Text()
-            }
-            close(work)
-        }()
-
-        wg := &sync.WaitGroup{}
-
-        for i := 0; i < numWorkers; i++ {
-            wg.Add(1)
-            go doWork(work, wg)
-        }
-        wg.Wait()
+	for i := 0; i < Threads; i++ {
+		wg.Add(1)
+		go doWork(work, wg)
+	}
+	wg.Wait()
 }
 
 func doWork(work chan string, wg *sync.WaitGroup) {
-    defer wg.Done()
-    var r *net.Resolver
+	defer wg.Done()
+	var r *net.Resolver
 
-    if opts.ResolverIP != "" {
-            r = &net.Resolver{
-                    PreferGo: true,
-                    Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-                            d := net.Dialer{}
-                            return d.DialContext(ctx, opts.Protocol, fmt.Sprintf("%s:%d", opts.ResolverIP, opts.Port))
-                    },
-            }
-    }
+	for ip := range work {
 
-    for ip := range work {
-        addr, err := r.LookupAddr(context.Background(), ip)
-        if err != nil {
-                continue
-        }
+		resolverIP = randoIP(Resolvers)
 
-        for _, a := range addr {
-		if opts.Domain {
-			fmt.Println(strings.TrimRight(a, "."))
-		} else {
-                	fmt.Println(ip, "\t",a)
+		r = &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				d := net.Dialer{}
+				return d.DialContext(ctx, Protocol, fmt.Sprintf("%s:%d", resolverIP, Port))
+			},
 		}
-        }
-    }
+
+		log.Debug().Str("ip",ip).Str("resolver",resolverIP).Msg("Resolving hostname with dialer")
+		addr, err := r.LookupAddr(context.Background(), ip)
+		if err != nil {
+			log.Fatal().Err(err).Msg("fail")
+			continue
+		}
+
+		for _, a := range addr {
+			log.Debug().Str(ip, a).Msg("result")
+		}
+	}
 }
