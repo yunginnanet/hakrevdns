@@ -9,10 +9,12 @@ This can be a useful way of setting someone up the bomb.
 ## It might work if you do this maybe
 
 ```sh
+git clone https://github.com/yunginnanet/randrevdns
+cd randrevdns
 echo "1.1.1.1" >> dnsResolvers.txt
 echo "9.9.9.9" >> dnsResolver.txt
-echo "tcp.direct" >> targets.txt
-echo "ircd.chat" >> targets.txt
+echo "198.251.80.62" >> targets.txt
+echo "209.141.38.221" >> targets.txt
 go run main.go
 ```
 
