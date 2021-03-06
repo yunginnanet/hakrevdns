@@ -122,7 +122,7 @@ func doWork(work chan string, wg *sync.WaitGroup) {
 		log.Debug().Str("ip",ip).Str("resolver",resolverIP).Msg("Resolving hostname with dialer")
 		addr, err := r.LookupAddr(context.Background(), ip)
 		if err != nil {
-			log.Fatal().Err(err).Msg("fail")
+			log.Error().Err(err).Msg("fail")
 			continue
 		}
 
