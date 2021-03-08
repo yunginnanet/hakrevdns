@@ -22,6 +22,74 @@ var Port int = 53
 var resolverIP string
 var resList []string
 
+
+func resolverLoad(path string) []string {
+	log.Info().Msg("Loading IP addresses from " + path)
+
+	f, err := os.Open(path)
+
+	if err != nil {
+		log.Debug().Msg(err.Error())
+		os.Exit(1)
+	}
+
+	defer f.Close()
+	scan := bufio.NewScanner(f)
+
+	var l []string
+
+	for scan.Scan() {
+		line := strings.TrimSpace(scan.Text())
+		if strings.Count(line,".") == 3 {
+			log.Debug().Msg("load from " + path + ": " + line)
+			l = append(l, line)
+		} else {
+			log.Debug().Msg("invalid: " + line)
+			os.Exit(1)
+		}
+	}
+
+	log.Info().Int("count", len(l)).Msg("Done loading resolvers")
+
+	return l
+}
+
+
+func targetLoad(path string) []string {
+	log.Info().Msg("Loading target addresses from " + path)
+
+	f, err := os.Open(path)
+
+	if err != nil {
+		log.Debug().Msg(err.Error())
+		os.Exit(1)
+	}
+
+	defer f.Close()
+	scan := bufio.NewScanner(f)
+
+	var l []string
+
+	for scan.Scan() {
+		line := strings.TrimSpace(scan.Text())
+		if strings.Contains(line, "."){
+			log.Debug().Msg("load from " + path + ": " + line)
+			l = append(l, line)
+		} else {
+			log.Debug().Msg("invalid: " + line)
+			os.Exit(1)
+		}
+	}
+
+	log.Info().Int("count", len(l)).Msg("Done loading resolvers")
+
+	return l
+}
+
+
+
+
+
 func ipLoad(path string) []string {
 	log.Info().Msg("Loading IP addresses from " + path)
 
@@ -70,8 +138,19 @@ func getRandomUint32() uint32 {
 
 func init() {
 	// init logger
+
+	lf, err := os.OpenFile("./randrevdns.log", os.O_RDWR | os.O_CREATE | os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Error opening log file!")
+	}
+
+
+
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+
+	consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr}
+	multi := zerolog.MultiLevelWriter(consoleWriter, lf)
+	log.Logger = zerolog.New(multi).With().Timestamp().Logger()
 	// load resolvers from list
 	Resolvers = ipLoad(resolverList)
 }
