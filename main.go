@@ -18,6 +18,7 @@ var resolverList string = "./dnsResolvers.txt"
 var targetList string = "targets.txt"
 var Resolvers []string
 var Protocol string = "udp"
+var Timeout int = 3 // timeout int in seconds
 var Port int = 53
 var resolverIP string
 var resList []string
@@ -186,6 +187,8 @@ func doWork(work chan string, wg *sync.WaitGroup) {
 	defer wg.Done()
 	var r *net.Resolver
 
+	tout := time.Duration(Timeout)*time.Second
+
 	for ip := range work {
 
 		resolverIP = randoIP(Resolvers)
@@ -193,7 +196,9 @@ func doWork(work chan string, wg *sync.WaitGroup) {
 		r = &net.Resolver{
 			PreferGo: true,
 			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				d := net.Dialer{}
+				d := net.Dialer{
+					Timeout: tout,
+				}
 				return d.DialContext(ctx, Protocol, fmt.Sprintf("%s:%d", resolverIP, Port))
 			},
 		}
