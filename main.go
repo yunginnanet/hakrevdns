@@ -211,7 +211,7 @@ func doWork(work chan string, wg *sync.WaitGroup) {
 		}
 
 		for _, a := range addr {
-			log.Debug().Str(ip, a).Msg("result")
+			log.Debug().Str("ipaddr", ip).Str("ptr", a).Msg("result")
 		}
 	}
 }
